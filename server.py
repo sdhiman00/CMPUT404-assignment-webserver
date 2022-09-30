@@ -1,5 +1,5 @@
 #  coding: utf-8 
-import socketserver
+import socketserver, os
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -30,9 +30,54 @@ import socketserver
 class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle(self):
-        self.data = self.request.recv(1024).strip()
+        self.data = self.request.recv(1024).strip().decode("utf-8")
         print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        
+        http_request = self.data.splitlines()[0].split()
+        request_method = http_request[0]
+        path = http_request[1]
+        
+        if request_method != 'GET':
+            self.request.sendall(bytearray("HTTP/1.1 405 Method Not Allowed",'utf-8'))
+        else:
+            self.response = ''
+            file_path = os.path.abspath("www") + path
+            if (os.path.exists(file_path)):
+                if (os.path.isdir(file_path)):
+                    if (file_path.endswith("/")):
+                        file_path += "index.html"
+                        self.handle_file(file_path)
+                    else:
+                        self.error_301(file_path)
+                else:
+                    self.handle_file(file_path)
+            else:
+                self.error_404()
+            
+            self.request.sendall(bytearray(self.response,'utf-8')) 
+    
+    def error_301(self, path):
+        self.response += ("HTTP/1.1 301 Moved Permanently\n"+
+                    "Content-Type: 'text/plain"+"\n\n"+
+                    "Location: "+ path + '/\n')
+
+    def error_404(self):
+        self.response += ("HTTP/1.1 404 Not Found\r\n")
+
+    def handle_file(self, path):
+        if path.endswith("css"):
+            content_type = "text/css"
+        elif path.endswith("html"):
+            content_type = "text/html"
+        else:
+            self.error_404()
+            return
+        self.serve(content_type, path)  
+   
+    def serve(self, content_type, path):
+        self.response += ("HTTP/1.1 200 OK\n"+
+                    "Content-Type: "+content_type+"\n\n"+
+                    open(path).read())
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
